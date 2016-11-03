@@ -1,0 +1,121 @@
+#!/bin/bash
+
+ischroot=0
+
+if [ $ischroot -eq 0 ]
+then
+
+cat << _EOF_ > create.disks
+label: dos
+label-id: 0xbe58cb3b
+device: /dev/sda
+unit: sectors
+
+/dev/sda1 : start=        2048, size=      409600, type=83, bootable
+/dev/sda2 : start=      411648, size=     8388608, type=82
+/dev/sda3 : start=     8800256, size=   200914911, type=83
+_EOF_
+
+	sfdisk /dev/sda < create.disks
+
+	mkfs.ext2 /dev/sda1
+	mkfs.ext4 /dev/sda3
+
+	mkswap /dev/sda2
+	swapon /dev/sda2
+
+	mount /dev/sda3 /mnt
+	mkdir /mnt/boot
+	mount /dev/sda1 /mnt/boot
+
+	pacstrap -i /mnt base base-devel --noconfirm
+
+	genfstab -U -p /mnt >> /mnt/etc/fstab
+
+	sed -i 's/ischroot=0/ischroot=1/' ./install_blackarch.sh
+	cp ./install_blackarch.sh /mnt/install_blackarch.sh
+
+	arch-chroot /mnt /bin/bash -x << _EOF_
+sh /install_blackarch.sh
+_EOF_
+
+fi
+
+if [ $ischroot -eq 1 ]
+then
+
+	pacman -Sy
+	pacman -S vim sudo grub-bios --noconfirm
+
+	sed -i 's/#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+	#sed -i 's/#ru_RU.UTF-8 UTF-8/ru_RU.UTF-8 UTF-8/' /etc/locale.gen
+
+	locale-gen
+
+	#echo LANG=ru_RU.UTF-8 > /etc/locale.conf
+	export LANG=en_US.UTF-8
+
+	ln -s /usr/share/zoneinfo/Europe/Moscow /etc/localtime
+
+	hwclock --systohc --utc
+
+	echo host > /etc/hostname
+
+	useradd -m -g users -G wheel,video -s /bin/bash user
+	
+	sed -i 's/# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' /etc/sudoers
+	sed -i 's/# %wheel ALL=(ALL) NOPASSWD: ALL/%wheel ALL=(ALL) NOPASSWD: ALL/' /etc/sudoers
+
+	grub-install --recheck /dev/sda
+	grub-mkconfig -o /boot/grub/grub.cfg
+
+	sed -i 's/#Color/Color/' /etc/pacman.conf
+
+	pacman -S bash-completion xorg-server xorg-xinit xorg-utils xorg-server-utils mesa xorg-twm xterm xorg-xclock xf86-input-synaptics linux-headers --noconfirm
+
+
+	cp /etc/X11/xinit/xinitrc /home/tony/.xinitrc
+
+	sed -i 's/#!\/bin\/sh/#!\/bin\/sh\n\/usr\/bin\/VBoxClient-all/' /home/user/.xinitrc
+
+	pacman -S mate nemo-fileroller gdm --noconfirm
+
+	mv /usr/share/xsessions/gnome.desktop ~/
+
+	systemctl enable gdm
+
+	pacman -S net-tools network-manager-applet --noconfirm
+
+	systemctl enable NetworkManager
+
+	sudo pacman -S gnome-terminal firefox unzip unrar bleachbit git calibre vlc gimp --noconfirm
+	curl -O https://blackarch.org/strap.sh
+	bash ./strap.sh
+	pacman -Syyu	
+	pacman -Ss blackarch-mirrorlist
+fi
+
+
+arch-chroot /mnt /bin/bash -x << _EOF_
+passwd
+1
+1
+_EOF_
+
+arch-chroot /mnt /bin/bash -x << _EOF_
+passwd user
+2
+2
+_EOF_
+
+umount -R /mnt/boot
+umount -R /mnt
+reboot
+
+
+
+
+
+
+
+
